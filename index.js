@@ -132,6 +132,82 @@ app.post('/api/studios', verifyToken, async (req, res) => {
 	}
 });
 
+app.put('/api/studios/:id', verifyToken, async (req, res) => {
+	try {
+		const { id } = req.params;
+
+		if (!ObjectId.isValid(id)) {
+			return res.status(400).json({ message: 'Invalid studio id' });
+		}
+
+		const col = await studiosCol();
+		const studio = await col.findOne({ _id: new ObjectId(id) });
+
+		if (!studio) {
+			return res.status(404).json({ message: 'Studio not found' });
+		}
+
+		if (studio.ownerEmail !== req.user.email) {
+			return res
+				.status(403)
+				.json({ message: 'Forbidden: not your studio' });
+		}
+
+		const data = req.body;
+		const updatedData = {
+			title: data.title,
+			category: data.category,
+			hourlyRate: Number(data.hourlyRate),
+			securityDeposit: Number(data.securityDeposit) || 0,
+			maxCapacity: Number(data.maxCapacity) || 1,
+			location: data.location,
+			image: data.image,
+			gallery: Array.isArray(data.gallery)
+				? data.gallery
+				: studio.gallery,
+			amenities: Array.isArray(data.amenities)
+				? data.amenities
+				: studio.amenities,
+			overview: data.overview,
+			updatedAt: new Date(),
+		};
+
+		await col.updateOne({ _id: new ObjectId(id) }, { $set: updatedData });
+
+		res.json({ message: 'Studio updated successfully' });
+	} catch (err) {
+		res.status(500).json({ message: 'Failed to update studio' });
+	}
+});
+
+app.delete('/api/studios/:id', verifyToken, async (req, res) => {
+	try {
+		const { id } = req.params;
+
+		if (!ObjectId.isValid(id)) {
+			return res.status(400).json({ message: 'Invalid studio id' });
+		}
+
+		const col = await studiosCol();
+		const studio = await col.findOne({ _id: new ObjectId(id) });
+
+		if (!studio) {
+			return res.status(404).json({ message: 'Studio not found' });
+		}
+
+		if (studio.ownerEmail !== req.user.email) {
+			return res
+				.status(403)
+				.json({ message: 'Forbidden: not your studio' });
+		}
+
+		await col.deleteOne({ _id: new ObjectId(id) });
+		res.json({ message: 'Studio deleted successfully' });
+	} catch {
+		res.status(500).json({ message: 'Failed to delete studio' });
+	}
+});
+
 connectDB().then(() => {
 	app.listen(PORT, () => {
 		console.log(`Server running on port ${PORT}`);
