@@ -7,6 +7,7 @@ import { connectDB } from './db.js';
 const app = express();
 const PORT = process.env.PORT;
 const studiosCol = async () => (await connectDB()).collection('studios');
+const bookingsCol = async () => (await connectDB()).collection('bookings');
 
 app.set('trust proxy', 1);
 
@@ -218,6 +219,71 @@ app.get('/api/my-studios', verifyToken, async (req, res) => {
 		res.json(studios);
 	} catch (err) {
 		res.status(500).json({ message: 'Failed to load your listings' });
+	}
+});
+
+app.post('/api/bookings', verifyToken, async (req, res) => {
+	try {
+		const { studioId, date, startTime, endTime } = req.body;
+
+		if (!studioId || !date || !startTime || !endTime) {
+			return res.status(400).json({ message: 'All fields are required' });
+		}
+
+		if (!ObjectId.isValid(studioId)) {
+			return res.status(400).json({ message: 'Invalid studio id' });
+		}
+
+		if (startTime >= endTime) {
+			return res
+				.status(400)
+				.json({ message: 'End time must be after start time' });
+		}
+
+		const studios = await studiosCol();
+		const studio = await studios.findOne({ _id: new ObjectId(studioId) });
+
+		if (!studio) {
+			return res.status(404).json({ message: 'Studio not found' });
+		}
+
+		if (studio.ownerEmail === req.user.email) {
+			return res
+				.status(400)
+				.json({ message: 'You cannot book your own studio' });
+		}
+
+		const [startHour, startMin] = startTime.split(':').map(Number);
+		const [endHour, endMin] = endTime.split(':').map(Number);
+		const totalHours =
+			(endHour * 60 + endMin - (startHour * 60 + startMin)) / 60;
+		const totalPrice = totalHours * studio.hourlyRate;
+
+		const booking = {
+			studioId: studio._id.toString(),
+			studioTitle: studio.title,
+			studioImage: studio.image,
+			hostEmail: studio.ownerEmail,
+			userEmail: req.user.email,
+			userName: req.user.name,
+			date,
+			startTime,
+			endTime,
+			hours: totalHours,
+			totalPrice,
+			status: 'Pending',
+			createdAt: new Date(),
+		};
+
+		const col = await bookingsCol();
+		const result = await col.insertOne(booking);
+
+		res.status(201).json({
+			message: 'Booking requested successfully',
+			insertedId: result.insertedId,
+		});
+	} catch (err) {
+		res.status(500).json({ message: 'Failed to create booking' });
 	}
 });
 
