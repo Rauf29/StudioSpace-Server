@@ -2,6 +2,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import 'dotenv/config';
 import express from 'express';
+import { connectDB } from './db.js';
 
 const app = express();
 const PORT = process.env.PORT;
@@ -22,8 +23,14 @@ app.get('/', (req, res) => {
 	console.log('StudioSpace server is running');
 });
 
-app.listen(PORT, () => {
-	console.log(`Server running on port ${PORT}`);
+app.get('/api/health', (req, res) => {
+	res.json({ status: 'ok', time: new Date().toISOString() });
+});
+
+connectDB().then(() => {
+	app.listen(PORT, () => {
+		console.log(`Server running on port ${PORT}`);
+	});
 });
 
 export default app;
