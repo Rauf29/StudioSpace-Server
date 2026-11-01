@@ -3,6 +3,7 @@ import cors from 'cors';
 import 'dotenv/config';
 import express from 'express';
 import { connectDB } from './db.js';
+import { verifyToken } from './middleware/verifyToken.js';
 
 const app = express();
 const PORT = process.env.PORT;
@@ -78,6 +79,15 @@ app.get('/api/studios/:id', async (req, res) => {
 	} catch (err) {
 		res.status(500).json({ message: 'Failed to load studio' });
 	}
+});
+
+app.post('/api/auth/logout', (req, res) => {
+	res.clearCookie('token');
+	res.json({ message: 'Logged out successfully' });
+});
+
+app.get('/api/me', verifyToken, (req, res) => {
+	res.json(req.user);
 });
 
 connectDB().then(() => {
