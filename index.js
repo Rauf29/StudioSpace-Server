@@ -3,7 +3,6 @@ import cors from 'cors';
 import 'dotenv/config';
 import express from 'express';
 import { connectDB } from './db.js';
-import { verifyToken } from './middleware/verifyToken.js';
 
 const app = express();
 const PORT = process.env.PORT;
@@ -86,8 +85,51 @@ app.post('/api/auth/logout', (req, res) => {
 	res.json({ message: 'Logged out successfully' });
 });
 
-app.get('/api/me', verifyToken, (req, res) => {
-	res.json(req.user);
+app.post('/api/studios', verifyToken, async (req, res) => {
+	try {
+		const data = req.body;
+
+		if (
+			!data.title ||
+			!data.category ||
+			!data.hourlyRate ||
+			!data.location ||
+			!data.image ||
+			!data.overview
+		) {
+			return res
+				.status(400)
+				.json({ message: 'Please provide all required fields' });
+		}
+
+		const newStudio = {
+			title: data.title,
+			category: data.category,
+			hourlyRate: Number(data.hourlyRate),
+			securityDeposit: Number(data.securityDeposit) || 0,
+			maxCapacity: Number(data.maxCapacity) || 1,
+			location: data.location,
+			image: data.image,
+			gallery: Array.isArray(data.gallery) ? data.gallery : [],
+			amenities: Array.isArray(data.amenities) ? data.amenities : [],
+			overview: data.overview,
+			rating: 0,
+			reviews: [],
+			ownerEmail: req.user.email,
+			ownerName: req.user.name,
+			createdAt: new Date(),
+		};
+
+		const col = await studiosCol();
+		const result = await col.insertOne(newStudio);
+
+		res.status(201).json({
+			message: 'Studio created successfully',
+			insertedId: result.insertedId,
+		});
+	} catch (err) {
+		res.status(500).json({ message: 'Failed to create studio' });
+	}
 });
 
 connectDB().then(() => {
