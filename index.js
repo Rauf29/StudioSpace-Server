@@ -208,6 +208,19 @@ app.delete('/api/studios/:id', verifyToken, async (req, res) => {
 	}
 });
 
+app.get('/api/my-studios', verifyToken, async (req, res) => {
+	try {
+		const col = await studiosCol();
+		const studios = await col
+			.find({ ownerEmail: req.user.email })
+			.sort({ createdAt: -1 })
+			.toArray();
+		res.json(studios);
+	} catch (err) {
+		res.status(500).json({ message: 'Failed to load your listings' });
+	}
+});
+
 connectDB().then(() => {
 	app.listen(PORT, () => {
 		console.log(`Server running on port ${PORT}`);
