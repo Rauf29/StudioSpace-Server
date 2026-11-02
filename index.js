@@ -253,6 +253,21 @@ app.post('/api/bookings', verifyToken, async (req, res) => {
 				.json({ message: 'You cannot book your own studio' });
 		}
 
+		const col = await bookingsCol();
+		const clash = await col.findOne({
+			studioId,
+			date,
+			status: 'Confirmed',
+			startTime: { $lt: endTime },
+			endTime: { $gt: startTime },
+		});
+		if (clash) {
+			return res.status(409).json({
+				message:
+					'This time slot is already booked. Please choose a different time.',
+			});
+		}
+
 		const [startHour, startMin] = startTime.split(':').map(Number);
 		const [endHour, endMin] = endTime.split(':').map(Number);
 		const totalHours =
@@ -275,7 +290,6 @@ app.post('/api/bookings', verifyToken, async (req, res) => {
 			createdAt: new Date(),
 		};
 
-		const col = await bookingsCol();
 		const result = await col.insertOne(booking);
 
 		res.status(201).json({
@@ -284,6 +298,100 @@ app.post('/api/bookings', verifyToken, async (req, res) => {
 		});
 	} catch (err) {
 		res.status(500).json({ message: 'Failed to create booking' });
+	}
+});
+
+app.get('/api/my-bookings', verifyToken, async (req, res) => {
+	try {
+		const col = await bookingsCol();
+		const bookings = await col
+			.find({ userEmail: req.user.email })
+			.sort({ createdAt: -1 })
+			.toArray();
+
+		res.json(bookings);
+	} catch (err) {
+		res.status(500).json({ message: 'Failed to load bookings' });
+	}
+});
+
+app.patch('/api/bookings/:id/cancel', verifyToken, async (req, res) => {
+	try {
+		const { id } = req.params;
+
+		if (!ObjectId.isValid(id)) {
+			return res.status(400).json({ message: 'Invalid booking id' });
+		}
+
+		const col = await bookingsCol();
+		const booking = await col.findOne({ _id: new ObjectId(id) });
+
+		if (!booking) {
+			return res.status(404).json({ message: 'Booking not found' });
+		}
+
+		if (booking.userEmail !== req.user.email) {
+			return res.status(403).json({ message: 'Forbidden' });
+		}
+
+		if (booking.status !== 'Pending') {
+			return res
+				.status(400)
+				.json({ message: 'Only pending bookings can be cancelled' });
+		}
+
+		await col.updateOne(
+			{ _id: new ObjectId(id) },
+			{ $set: { status: 'Cancelled' } },
+		);
+		res.json({ message: 'Booking cancelled successfully' });
+	} catch (err) {
+		res.status(500).json({ message: 'Failed to cancel booking' });
+	}
+});
+
+app.get('/api/host-bookings', verifyToken, async (req, res) => {
+	try {
+		const col = await bookingsCol();
+		const bookings = await col
+			.find({ hostEmail: req.user.email })
+			.sort({ createdAt: -1 })
+			.toArray();
+
+		res.json(bookings);
+	} catch (err) {
+		res.status(500).json({ message: 'Failed to load host bookings' });
+	}
+});
+
+app.patch('/api/bookings/:id/status', verifyToken, async (req, res) => {
+	try {
+		const { id } = req.params;
+		const { status } = req.body;
+
+		if (!['Confirmed', 'Completed'].includes(status)) {
+			return res.status(400).json({ message: 'Invalid status' });
+		}
+
+		if (!ObjectId.isValid(id)) {
+			return res.status(400).json({ message: 'Invalid booking id' });
+		}
+
+		const col = await bookingsCol();
+		const booking = await col.findOne({ _id: new ObjectId(id) });
+
+		if (!booking) {
+			return res.status(404).json({ message: 'Booking not found' });
+		}
+
+		if (booking.hostEmail !== req.user.email) {
+			return res.status(403).json({ message: 'Forbidden' });
+		}
+
+		await col.updateOne({ _id: new ObjectId(id) }, { $set: { status } });
+		res.json({ message: `Booking marked as ${status}` });
+	} catch (err) {
+		res.status(500).json({ message: 'Failed to update booking status' });
 	}
 });
 
