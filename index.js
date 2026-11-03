@@ -15,7 +15,9 @@ app.set('trust proxy', 1);
 
 app.use(
 	cors({
-		origin: process.env.CLIENT_URL,
+		origin: (origin, callback) => {
+			return callback(null, true);
+		},
 		credentials: true,
 	}),
 );
@@ -25,6 +27,10 @@ app.use(cookieParser());
 app.get('/', (req, res) => {
 	res.send('StudioSpace server is running');
 	console.log('StudioSpace server is running');
+});
+
+app.get('/api/health', (req, res) => {
+	res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
 app.get('/api/featured-studios', async (req, res) => {
@@ -486,10 +492,12 @@ app.post('/api/studios/:id/reviews', verifyToken, async (req, res) => {
 	}
 });
 
-connectDB().then(() => {
-	app.listen(PORT, () => {
-		console.log(`Server running on port ${PORT}`);
+if (!process.env.VERCEL) {
+	connectDB().then(() => {
+		app.listen(PORT, () => {
+			console.log(`Server running on port ${PORT}`);
+		});
 	});
-});
+}
 
 export default app;
