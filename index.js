@@ -27,10 +27,6 @@ app.get('/', (req, res) => {
 	console.log('StudioSpace server is running');
 });
 
-app.get('/api/health', (req, res) => {
-	res.json({ status: 'ok', time: new Date().toISOString() });
-});
-
 app.get('/api/featured-studios', async (req, res) => {
 	try {
 		const col = await studiosCol();
@@ -47,17 +43,29 @@ app.get('/api/featured-studios', async (req, res) => {
 
 app.get('/api/studios', async (req, res) => {
 	try {
-		const { category, search, sort } = req.query;
+		const { category, search, location, sort } = req.query;
 		let query = {};
-		if (category) {
+		if (
+			category &&
+			category !== 'All Categories' &&
+			category !== 'All Spaces'
+		) {
 			query.category = category;
 		}
-		if (search) {
-			query.title = { $regex: search, $options: 'i' };
+		if (location && location !== 'All Locations') {
+			query.location = { $regex: location, $options: 'i' };
+		}
+		if (search && search.trim()) {
+			query.$or = [
+				{ title: { $regex: search.trim(), $options: 'i' } },
+				{ location: { $regex: search.trim(), $options: 'i' } },
+				{ overview: { $regex: search.trim(), $options: 'i' } },
+			];
 		}
 		let sortQuery = { createdAt: -1 };
 		if (sort === 'price-asc') sortQuery = { hourlyRate: 1 };
 		if (sort === 'price-desc') sortQuery = { hourlyRate: -1 };
+		if (sort === 'rating') sortQuery = { rating: -1 };
 		const col = await studiosCol();
 		const studios = await col.find(query).sort(sortQuery).toArray();
 		res.json(studios);
@@ -374,7 +382,7 @@ app.patch('/api/bookings/:id/status', verifyToken, async (req, res) => {
 		const { id } = req.params;
 		const { status } = req.body;
 
-		if (!['Confirmed', 'Completed'].includes(status)) {
+		if (!['Confirmed', 'Completed', 'Cancelled'].includes(status)) {
 			return res.status(400).json({ message: 'Invalid status' });
 		}
 
@@ -397,6 +405,84 @@ app.patch('/api/bookings/:id/status', verifyToken, async (req, res) => {
 		res.json({ message: `Booking marked as ${status}` });
 	} catch (err) {
 		res.status(500).json({ message: 'Failed to update booking status' });
+	}
+});
+
+app.post('/api/studios/:id/reviews', verifyToken, async (req, res) => {
+	try {
+		const { id } = req.params;
+		const { rating, comment, bookingId } = req.body;
+
+		const numRating = Number(rating);
+		if (!numRating || numRating < 1 || numRating > 5) {
+			return res
+				.status(400)
+				.json({ message: 'Rating must be between 1 and 5' });
+		}
+
+		if (!comment || !comment.trim()) {
+			return res
+				.status(400)
+				.json({ message: 'Review comment is required' });
+		}
+
+		if (!ObjectId.isValid(id)) {
+			return res.status(400).json({ message: 'Invalid studio id' });
+		}
+
+		const studios = await studiosCol();
+		const studio = await studios.findOne({ _id: new ObjectId(id) });
+		if (!studio) {
+			return res.status(404).json({ message: 'Studio not found' });
+		}
+
+		const newReview = {
+			userEmail: req.user.email,
+			userName: req.user.name || 'Verified Creator',
+			rating: numRating,
+			comment: comment.trim(),
+			createdAt: new Date(),
+		};
+
+		const existingReviews = Array.isArray(studio.reviews)
+			? studio.reviews
+			: [];
+		const updatedReviews = [...existingReviews, newReview];
+
+		const totalRating = updatedReviews.reduce(
+			(sum, r) => sum + Number(r.rating || 0),
+			0,
+		);
+		const avgRating = Number(
+			(totalRating / updatedReviews.length).toFixed(1),
+		);
+
+		await studios.updateOne(
+			{ _id: new ObjectId(id) },
+			{
+				$set: {
+					reviews: updatedReviews,
+					rating: avgRating,
+					reviewsCount: updatedReviews.length,
+				},
+			},
+		);
+
+		if (bookingId && ObjectId.isValid(bookingId)) {
+			const bookings = await bookingsCol();
+			await bookings.updateOne(
+				{ _id: new ObjectId(bookingId) },
+				{ $set: { hasReviewed: true } },
+			);
+		}
+
+		res.status(201).json({
+			message: 'Review submitted successfully',
+			rating: avgRating,
+			reviewsCount: updatedReviews.length,
+		});
+	} catch (err) {
+		res.status(500).json({ message: 'Failed to submit review' });
 	}
 });
 
