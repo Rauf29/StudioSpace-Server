@@ -2,10 +2,12 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import 'dotenv/config';
 import express from 'express';
+import { ObjectId } from 'mongodb';
 import { connectDB } from './db.js';
+import { verifyToken } from './middleware/verifyToken.js';
 
 const app = express();
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 5001;
 const studiosCol = async () => (await connectDB()).collection('studios');
 const bookingsCol = async () => (await connectDB()).collection('bookings');
 
@@ -29,7 +31,7 @@ app.get('/api/health', (req, res) => {
 	res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-app.get('api/featured-studios', async (req, res) => {
+app.get('/api/featured-studios', async (req, res) => {
 	try {
 		const col = await studiosCol();
 		const studios = await col
@@ -155,7 +157,7 @@ app.put('/api/studios/:id', verifyToken, async (req, res) => {
 		}
 
 		const data = req.body;
-		const updatedData = {
+		const updateData = {
 			title: data.title,
 			category: data.category,
 			hourlyRate: Number(data.hourlyRate),
@@ -173,7 +175,7 @@ app.put('/api/studios/:id', verifyToken, async (req, res) => {
 			updatedAt: new Date(),
 		};
 
-		await col.updateOne({ _id: new ObjectId(id) }, { $set: updatedData });
+		await col.updateOne({ _id: new ObjectId(id) }, { $set: updateData });
 
 		res.json({ message: 'Studio updated successfully' });
 	} catch (err) {
@@ -203,8 +205,9 @@ app.delete('/api/studios/:id', verifyToken, async (req, res) => {
 		}
 
 		await col.deleteOne({ _id: new ObjectId(id) });
+
 		res.json({ message: 'Studio deleted successfully' });
-	} catch {
+	} catch (err) {
 		res.status(500).json({ message: 'Failed to delete studio' });
 	}
 });
@@ -216,6 +219,7 @@ app.get('/api/my-studios', verifyToken, async (req, res) => {
 			.find({ ownerEmail: req.user.email })
 			.sort({ createdAt: -1 })
 			.toArray();
+
 		res.json(studios);
 	} catch (err) {
 		res.status(500).json({ message: 'Failed to load your listings' });
@@ -261,6 +265,7 @@ app.post('/api/bookings', verifyToken, async (req, res) => {
 			startTime: { $lt: endTime },
 			endTime: { $gt: startTime },
 		});
+
 		if (clash) {
 			return res.status(409).json({
 				message:

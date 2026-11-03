@@ -1,17 +1,24 @@
-import jwt from 'jsonwebtoken';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 
-export const verifyToken = (req, res, next) => {
-	const token = req.cookies?.token;
+export const verifyToken = async (req, res, next) => {
+	const authHeader = req.headers.authorization;
+	if (!authHeader) {
+		return res.status(401).json({ message: 'Unauthorized!' });
+	}
 
+	const token = authHeader.split(' ')[1];
 	if (!token) {
 		return res.status(401).json({ message: 'Unauthorized!' });
 	}
 
+	const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+	const JWKS = createRemoteJWKSet(new URL(`${clientUrl}/api/auth/jwks`));
+
 	try {
-		const decoded = jwt.verify(token, process.env.JWT_SECRET);
-		req.user = decoded;
+		const { payload } = await jwtVerify(token, JWKS);
+		req.user = payload;
 		next();
-	} catch (err) {
-		return res.status(401).json({ message: 'Invalid token!' });
+	} catch {
+		return res.status(401).json({ message: 'Unauthorized or Invalid Token!' });
 	}
 };
