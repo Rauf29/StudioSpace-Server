@@ -32,3 +32,5 @@ Backend engine powering the **StudioSpace** peer-to-peer creative workspace plat
 - `PATCH /api/bookings/:id/cancel` — Cancel pending booking
 - `GET /api/host-bookings` — Incoming reservations for host's spaces
 - `PATCH /api/bookings/:id/status` — Confirm, Complete, or Decline booking
+
+---
